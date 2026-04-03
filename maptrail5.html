@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trail Tracer & Map Overlay</title>
+    
+    <!-- Tailwind CSS for UI styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Leaflet CSS & JS for Mapping -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+    <!-- Font Awesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        body, html { margin: 0; padding: 0; height: 100%; width: 100%; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        #map { height: 100%; width: 100%; z-index: 1; }
+        .drawing-cursor .leaflet-interactive { cursor: crosshair !important; }
+        
+        /* Custom User Location Live Marker */
+        .user-location-marker {
+            position: relative;
+        }
+        .user-location-pulse {
+            background-color: rgba(66, 133, 244, 0.4);
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            animation: pulse 2s infinite;
+            z-index: 1;
+        }
+        .user-location-dot {
+            background-color: #4285F4;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            border: 2px solid white;
+            box-shadow: 0 0 4px rgba(0,0,0,0.4);
+            position: absolute;
+            top: 8px;
+            left: 8px;
+            z-index: 3;
+        }
+        .user-location-heading {
+            width: 0;
+            height: 0;
+            border-left: 7px solid transparent;
+            border-right: 7px solid transparent;
+            border-bottom: 14px solid rgba(66, 133, 244, 0.9);
+            position: absolute;
+            top: -2px;
+            left: 50%;
+            transform-origin: 50% 17px;
+            z-index: 2;
+        }
+        @keyframes pulse {
+            0% { transform: scale(0.5); opacity: 1; }
+            100% { transform: scale(2.5); opacity: 0; }
+        }
+
+        /* Sidebar Toggle Transitions */
+        #sidebar {
+            transition: height 0.3s ease, width 0.3s ease;
+        }
+        .sidebar-content {
+            transition: opacity 0.2s ease, visibility 0.2s ease;
+        }
+        @media (max-width: 767px) {
+            #sidebar { width: 100%; }
+            #sidebar.collapsed { height: 0 !important; }
+            #sidebar.collapsed .sidebar-content {
+                opacity: 0; visibility: hidden; height: 0; padding-top: 0; padding-bottom: 0; overflow: hidden;
+            }
+            #sidebarIcon { transform: rotate(0deg); }
+            #sidebar.collapsed #sidebarIcon { transform: rotate(180deg); }
+        }
+        @media (min-width: 768px) {
+            #sidebar { height: 100%; width: 20rem; }
+            #sidebar.collapsed { width: 0 !important; }
+            #sidebar.collapsed .sidebar-content {
+                opacity: 0; visibility: hidden; width: 0; padding-left: 0; padding-right: 0; overflow: hidden;
+            }
+            #sidebarIcon { transform: rotate(-90deg); }
+            #sidebar.collapsed #sidebarIcon { transform: rotate(90deg); }
+        }
+
+        /* Custom Alert Modal Styles */
+        #customAlert {
+            display: none;
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 9999;
+            width: 90%;
+            max-width: 400px;
+        }
+    </style>
+</head>
+<body class="flex flex-col md:flex-row h-[100dvh] bg-gray-50 overflow-hidden">
+
+    <!-- Custom Alert Notification -->
+    <div id="customAlert" class="bg-white border-l-4 border-red-500 shadow-2xl rounded-lg p-4 flex items-start gap-3">
+        <i class="fa-solid fa-circle-exclamation text-red-500 mt-1"></i>
+        <div class="flex-grow">
+            <h4 class="font-bold text-gray-800">Alert</h4>
+            <p id="alertMessage" class="text-sm text-gray-600"></p>
+        </div>
+        <button onclick="document.getElementById('customAlert').style.display='none'" class="text-gray-400 hover:text-gray-600">
+            <i class="fa-solid fa-xmark"></i>
+        </button>
+    </div>
+
+    <!-- Control Panel -->
+    <div id="sidebar" class="relative bg-white shadow-xl z-[2000] flex-shrink-0">
+        <div id="sidebarContent" class="sidebar-content w-full md:w-80 max-h-[50vh] md:max-h-full flex flex-col p-5 overflow-y-auto">
+            <h1 class="text-2xl font-bold text-gray-800 mb-2"><i class="fa-solid fa-map-location-dot text-blue-600 mr-2"></i>Trail Tracer</h1>
+            <p class="text-sm text-gray-500 mb-6">Overlay a map, trace a route, and export.</p>
+
+            <!-- Step 1: Overlay -->
+            <div class="mb-6">
+                <h2 class="text-sm font-bold uppercase tracking-wider text-gray-400 mb-3">1. Map Overlay</h2>
+                
+                <label class="block w-full text-center border-2 border-dashed border-gray-300 rounded-lg p-4 cursor-pointer hover:bg-gray-50 transition">
+                    <i class="fa-solid fa-camera text-gray-400 text-2xl mb-2"></i>
+                    <span class="block text-sm font-medium text-gray-600">Upload / Take Photo of Map</span>
+                    <input type="file" id="imageUpload" class="hidden" accept="image/*">
+                </label>
+
+                <div id="overlayControls" class="hidden mt-4 bg-gray-50 p-3 rounded-lg border border-gray-200">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Opacity: <span id="opacityVal">60%</span></label>
+                    <input type="range" id="opacitySlider" min="0" max="100" value="60" class="w-full mb-4">
+                    
+                    <h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 text-center">Adjust Position</h3>
+                    <div class="grid grid-cols-3 gap-1 mb-2 max-w-[180px] mx-auto">
+                        <div></div>
+                        <button id="btnUp" class="bg-white border border-gray-300 p-2 rounded hover:bg-gray-100 text-gray-700 active:bg-gray-200 transition touch-manipulation"><i class="fa-solid fa-arrow-up"></i></button>
+                        <div></div>
+                        <button id="btnLeft" class="bg-white border border-gray-300 p-2 rounded hover:bg-gray-100 text-gray-700 active:bg-gray-200 transition touch-manipulation"><i class="fa-solid fa-arrow-left"></i></button>
+                        <button id="btnDown" class="bg-white border border-gray-300 p-2 rounded hover:bg-gray-100 text-gray-700 active:bg-gray-200 transition touch-manipulation"><i class="fa-solid fa-arrow-down"></i></button>
+                        <button id="btnRight" class="bg-white border border-gray-300 p-2 rounded hover:bg-gray-100 text-gray-700 active:bg-gray-200 transition touch-manipulation"><i class="fa-solid fa-arrow-right"></i></button>
+                    </div>
+
+                    <div class="flex gap-2 mb-2">
+                        <button id="btnScaleDown" class="flex-1 bg-white border border-gray-300 p-2 rounded hover:bg-gray-100 text-gray-700 active:bg-gray-200 transition text-sm touch-manipulation"><i class="fa-solid fa-magnifying-glass-minus"></i></button>
+                        <button id="btnScaleUp" class="flex-1 bg-white border border-gray-300 p-2 rounded hover:bg-gray-100 text-gray-700 active:bg-gray-200 transition text-sm touch-manipulation"><i class="fa-solid fa-magnifying-glass-plus"></i></button>
+                    </div>
+
+                    <div class="flex gap-2 mb-4">
+                        <button id="btnRotLeft" class="flex-1 bg-white border border-gray-300 p-2 rounded hover:bg-gray-100 text-gray-700 active:bg-gray-200 transition text-sm touch-manipulation"><i class="fa-solid fa-rotate-left"></i></button>
+                        <button id="btnRotRight" class="flex-1 bg-white border border-gray-300 p-2 rounded hover:bg-gray-100 text-gray-700 active:bg-gray-200 transition text-sm touch-manipulation"><i class="fa-solid fa-rotate-right"></i></button>
+                    </div>
+
+                    <button id="removeOverlayBtn" class="w-full text-red-600 border border-red-200 bg-white hover:bg-red-50 text-sm py-1.5 rounded transition">
+                        Remove Image
+                    </button>
+                </div>
+            </div>
+
+            <!-- Step 2: Draw -->
+            <div class="mb-6 border-t border-gray-200 pt-6">
+                <h2 class="text-sm font-bold uppercase tracking-wider text-gray-400 mb-3">2. Trace Trail</h2>
+                
+                <button id="drawToggleBtn" class="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-lg transition shadow-sm mb-3">
+                    <i class="fa-solid fa-pen"></i> <span>Start Drawing</span>
+                </button>
+
+                <div class="flex gap-2">
+                    <button id="undoBtn" class="flex-1 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 text-sm py-2 rounded transition disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                        <i class="fa-solid fa-rotate-left mr-1"></i> Undo
+                    </button>
+                    <button id="clearTrailBtn" class="flex-1 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 text-sm py-2 rounded transition disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                        <i class="fa-solid fa-trash-can mr-1"></i> Clear All
+                    </button>
+                </div>
+                
+                <p class="text-xs text-gray-500 mt-3 text-center" id="pointCount">0 points drawn</p>
+            </div>
+
+            <!-- Step 3: Export -->
+            <div class="mt-auto border-t border-gray-200 pt-6">
+                <h2 class="text-sm font-bold uppercase tracking-wider text-gray-400 mb-3">3. Export Route</h2>
+                
+                <div class="flex gap-2">
+                    <button id="exportGpxBtn" class="flex-1 bg-green-600 hover:bg-green-700 text-white font-medium py-2.5 rounded-lg transition shadow-sm disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                        Download .GPX
+                    </button>
+                    <button id="exportKmlBtn" class="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-2.5 rounded-lg transition shadow-sm disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                        Download .KML
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Toggle Handle -->
+        <button id="sidebarHandle" class="absolute left-1/2 md:left-auto -bottom-6 md:bottom-auto -translate-x-1/2 md:translate-x-0 md:top-1/2 md:-right-6 md:-translate-y-1/2 w-12 h-6 md:w-6 md:h-12 bg-white border border-gray-200 shadow-md flex items-center justify-center z-[2001] rounded-b-md md:rounded-b-none md:rounded-r-md text-gray-500 hover:text-blue-600 transition-colors focus:outline-none">
+            <i id="sidebarIcon" class="fa-solid fa-chevron-up transition-transform duration-300"></i>
+        </button>
+    </div>
+
+    <!-- Map Container -->
+    <div id="map" class="flex-grow relative z-10">
+        <!-- Live Location Floating Button -->
+        <button id="locateBtn" class="absolute top-[90px] right-2.5 z-[1000] bg-white w-[34px] h-[34px] rounded-md shadow-[0_1px_5px_rgba(0,0,0,0.4)] border border-[#ccc] flex items-center justify-center text-gray-700 hover:bg-[#f4f4f4] transition touch-manipulation" title="Track My Location">
+            <i id="locateIcon" class="fa-solid fa-location-crosshairs text-lg"></i>
+        </button>
+
+        <div id="mapInstructionOverlay" class="hidden absolute top-4 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white px-6 py-3 rounded-full shadow-lg z-[1000] font-bold pointer-events-none text-center w-11/12 max-w-md">
+            <span id="mapInstructionText">Click map to place image center.</span>
+        </div>
+
+        <!-- Crosshair visual center -->
+        <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none opacity-50 z-[1000]">
+            <i class="fa-solid fa-plus text-gray-600 text-xl"></i>
+        </div>
+    </div>
+
+    <script>
+        // --- HELPERS ---
+        function showAlert(msg) {
+            document.getElementById('alertMessage').innerText = msg;
+            document.getElementById('customAlert').style.display = 'flex';
+            setTimeout(() => {
+                document.getElementById('customAlert').style.display = 'none';
+            }, 6000);
+        }
+
+        window.onload = function() {
+            // --- 1. INITIALIZE MAP ---
+            const map = L.map('map', {
+                zoomControl: false
+            }).setView([52.2, -0.6], 5);
+            
+            L.control.zoom({ position: 'topright' }).addTo(map);
+
+            const esriSatellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+                attribution: 'Tiles &copy; Esri'
+            });
+
+            const openStreetMap = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OSM'
+            });
+
+            const topoMap = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+                attribution: 'SRTM | OpenTopoMap'
+            });
+
+            esriSatellite.addTo(map);
+
+            const baseMaps = {
+                "Satellite": esriSatellite,
+                "Topo Map": topoMap,
+                "Street Map": openStreetMap
+            };
+            L.control.layers(baseMaps, null, {position: 'bottomleft'}).addTo(map);
+
+            // --- 2. STATE VARIABLES ---
+            let imageOverlay = null;
+            let isPlacingImage = false;
+            let imgCenter = null;
+            let imgWidthLng = 0;
+            let imgHeightLat = 0;
+            let imgRotation = 0;
+            let calImgObj = new Image();
+            let transformObserver = null;
+
+            let isDrawing = false;
+            let trailCoords = [];
+            let trailPolyline = L.polyline([], { color: '#ff0000', weight: 4, opacity: 0.8 }).addTo(map);
+            let pointMarkers = L.layerGroup().addTo(map);
+
+            let isTracking = false;
+            let userMarker = null;
+            let userAccuracyCircle = null;
+
+            const drawToggleBtn = document.getElementById('drawToggleBtn');
+            const undoBtn = document.getElementById('undoBtn');
+            const clearTrailBtn = document.getElementById('clearTrailBtn');
+            const exportGpxBtn = document.getElementById('exportGpxBtn');
+            const exportKmlBtn = document.getElementById('exportKmlBtn');
+            const pointCountTxt = document.getElementById('pointCount');
+            const locateBtn = document.getElementById('locateBtn');
+            const locateIcon = document.getElementById('locateIcon');
+
+            // --- 3. IMAGE UPLOAD ---
+            document.getElementById('imageUpload').addEventListener('change', function(e) {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    calImgObj.src = event.target.result;
+                    calImgObj.onload = () => {
+                        isPlacingImage = true;
+                        if (imageOverlay) map.removeLayer(imageOverlay);
+                        if (transformObserver) transformObserver.disconnect();
+                        document.getElementById('mapInstructionText').innerHTML = "Click map to place image center.";
+                        document.getElementById('mapInstructionOverlay').classList.remove('hidden');
+                        document.getElementById('map').classList.add('drawing-cursor');
+                    };
+                };
+                reader.readAsDataURL(file);
+                e.target.value = '';
+            });
+
+            function applyRotation() {
+                if (!imageOverlay) return;
+                const el = imageOverlay.getElement();
+                if (el) {
+                    if (transformObserver) transformObserver.disconnect();
+                    const currentTransform = el.style.transform;
+                    if (currentTransform) {
+                        const expectedRotation = `rotate(${imgRotation}deg)`;
+                        const baseTransform = currentTransform.replace(/\s*rotate\([^)]+\)/g, '');
+                        el.style.transform = baseTransform + ` ${expectedRotation}`;
+                        el.style.transformOrigin = 'center center';
+                    }
+                    if (transformObserver) transformObserver.observe(el, { attributes: true, attributeFilter: ['style'] });
+                }
+            }
+
+            function createOverlay() {
+                if (imageOverlay) map.removeLayer(imageOverlay);
+                if (transformObserver) transformObserver.disconnect();
+                
+                const opacity = document.getElementById('opacitySlider').value / 100;
+                const halfW = imgWidthLng / 2;
+                const halfH = imgHeightLat / 2;
+                const bounds = L.latLngBounds(
+                    [imgCenter.lat - halfH, imgCenter.lng - halfW],
+                    [imgCenter.lat + halfH, imgCenter.lng + halfW]
+                );
+                
+                imageOverlay = L.imageOverlay(calImgObj.src, bounds, { opacity, interactive: false }).addTo(map);
+                
+                const el = imageOverlay.getElement();
+                if (el) {
+                    el.style.transformOrigin = 'center center';
+                    
+                    transformObserver = new MutationObserver((mutations) => {
+                        const currentTransform = el.style.transform;
+                        const expectedRotation = `rotate(${imgRotation}deg)`;
+                        if (currentTransform && !currentTransform.includes(expectedRotation)) {
+                            transformObserver.disconnect();
+                            const baseTransform = currentTransform.replace(/\s*rotate\([^)]+\)/g, '');
+                            el.style.transform = baseTransform + ` ${expectedRotation}`;
+                            transformObserver.observe(el, { attributes: true, attributeFilter: ['style'] });
+                        }
+                    });
+                    transformObserver.observe(el, { attributes: true, attributeFilter: ['style'] });
+                }
+                
+                applyRotation();
+                imageOverlay.on('load', applyRotation);
+                document.getElementById('overlayControls').classList.remove('hidden');
+            }
+
+            function updateOverlay() {
+                if (!imageOverlay || !imgCenter) return;
+                const halfW = imgWidthLng / 2;
+                const halfH = imgHeightLat / 2;
+                const bounds = L.latLngBounds(
+                    [imgCenter.lat - halfH, imgCenter.lng - halfW],
+                    [imgCenter.lat + halfH, imgCenter.lng + halfW]
+                );
+                imageOverlay.setBounds(bounds);
+                applyRotation();
+            }
+
+            function addHoldListener(btnId, action) {
+                const btn = document.getElementById(btnId);
+                let interval;
+                const start = (e) => {
+                    if (e.type === 'touchstart') e.preventDefault();
+                    if (interval) clearInterval(interval);
+                    action();
+                    interval = setInterval(action, 40);
+                };
+                const stop = () => { if (interval) clearInterval(interval); interval = null; };
+                btn.addEventListener('mousedown', start);
+                btn.addEventListener('mouseup', stop);
+                btn.addEventListener('mouseleave', stop);
+                btn.addEventListener('touchstart', start, {passive: false});
+                btn.addEventListener('touchend', stop);
+            }
+
+            addHoldListener('btnUp', () => { imgCenter.lat += (imgHeightLat * 0.01); updateOverlay(); });
+            addHoldListener('btnDown', () => { imgCenter.lat -= (imgHeightLat * 0.01); updateOverlay(); });
+            addHoldListener('btnLeft', () => { imgCenter.lng -= (imgWidthLng * 0.01); updateOverlay(); });
+            addHoldListener('btnRight', () => { imgCenter.lng += (imgWidthLng * 0.01); updateOverlay(); });
+            addHoldListener('btnScaleUp', () => { imgWidthLng *= 1.02; imgHeightLat *= 1.02; updateOverlay(); });
+            addHoldListener('btnScaleDown', () => { imgWidthLng *= 0.98; imgHeightLat *= 0.98; updateOverlay(); });
+            addHoldListener('btnRotLeft', () => { imgRotation -= 1; updateOverlay(); });
+            addHoldListener('btnRotRight', () => { imgRotation += 1; updateOverlay(); });
+
+            document.getElementById('opacitySlider').addEventListener('input', (e) => {
+                document.getElementById('opacityVal').innerText = e.target.value + '%';
+                if (imageOverlay) imageOverlay.setOpacity(e.target.value / 100);
+            });
+
+            document.getElementById('removeOverlayBtn').addEventListener('click', () => {
+                if (transformObserver) {
+                    transformObserver.disconnect();
+                    transformObserver = null;
+                }
+                if (imageOverlay) map.removeLayer(imageOverlay);
+                imageOverlay = null;
+                document.getElementById('overlayControls').classList.add('hidden');
+            });
+
+            document.getElementById('sidebarHandle').addEventListener('click', () => {
+                const sidebar = document.getElementById('sidebar');
+                sidebar.classList.toggle('collapsed');
+                setTimeout(() => { map.invalidateSize(); }, 350);
+            });
+
+            map.on('click', function(e) {
+                if (isPlacingImage) {
+                    isPlacingImage = false;
+                    document.getElementById('mapInstructionOverlay').classList.add('hidden');
+                    document.getElementById('map').classList.remove('drawing-cursor');
+                    imgCenter = e.latlng;
+                    imgRotation = 0;
+                    const aspect = calImgObj.naturalWidth / calImgObj.naturalHeight;
+                    const mapBounds = map.getBounds();
+                    imgWidthLng = (mapBounds.getEast() - mapBounds.getWest()) * 0.3; 
+                    imgHeightLat = (imgWidthLng * Math.cos(imgCenter.lat * Math.PI / 180)) / aspect;
+                    createOverlay();
+                } else if (isDrawing) {
+                    trailCoords.push(e.latlng);
+                    trailPolyline.addLatLng(e.latlng);
+                    L.circleMarker(e.latlng, { radius: 4, fillColor: "#fff", color: "#f00", weight: 2, interactive: false }).addTo(pointMarkers);
+                    updateDrawingUI();
+                }
+            });
+
+            drawToggleBtn.addEventListener('click', () => {
+                isDrawing = !isDrawing;
+                if (isDrawing) {
+                    drawToggleBtn.innerHTML = '<i class="fa-solid fa-stop"></i> <span>Stop Drawing</span>';
+                    drawToggleBtn.classList.replace('bg-blue-600', 'bg-red-600');
+                    document.getElementById('map').classList.add('drawing-cursor');
+                } else {
+                    drawToggleBtn.innerHTML = '<i class="fa-solid fa-pen"></i> <span>Start Drawing</span>';
+                    drawToggleBtn.classList.replace('bg-red-600', 'bg-blue-600');
+                    document.getElementById('map').classList.remove('drawing-cursor');
+                }
+            });
+
+            undoBtn.addEventListener('click', () => {
+                trailCoords.pop();
+                trailPolyline.setLatLngs(trailCoords);
+                pointMarkers.clearLayers();
+                trailCoords.forEach(c => L.circleMarker(c, { radius: 4, fillColor: "#fff", color: "#f00", weight: 2, interactive: false }).addTo(pointMarkers));
+                updateDrawingUI();
+            });
+
+            clearTrailBtn.addEventListener('click', () => {
+                if(confirm("Clear entire trail?")) {
+                    trailCoords = []; trailPolyline.setLatLngs([]); pointMarkers.clearLayers(); updateDrawingUI();
+                }
+            });
+
+            function updateDrawingUI() {
+                pointCountTxt.innerText = `${trailCoords.length} points drawn`;
+                const hasPoints = trailCoords.length > 0;
+                undoBtn.disabled = !hasPoints; clearTrailBtn.disabled = !hasPoints;
+                exportGpxBtn.disabled = !hasPoints; exportKmlBtn.disabled = !hasPoints;
+            }
+
+            function downloadFile(content, filename, contentType) {
+                const blob = new Blob([content], { type: contentType });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url; a.download = filename;
+                document.body.appendChild(a); a.click();
+                document.body.removeChild(a); URL.revokeObjectURL(url);
+            }
+
+            exportGpxBtn.addEventListener('click', () => {
+                let gpx = '<?xml version="1.0" encoding="UTF-8"?><gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1"><trk><trkseg>';
+                trailCoords.forEach(c => gpx += `<trkpt lat="${c.lat.toFixed(6)}" lon="${c.lng.toFixed(6)}"></trkpt>`);
+                gpx += '</trkseg></trk></gpx>';
+                downloadFile(gpx, 'trail.gpx', 'application/gpx+xml');
+            });
+
+            exportKmlBtn.addEventListener('click', () => {
+                let kml = '<?xml version="1.0" encoding="UTF-8"?><kml xmlns="http://www.opengis.net/kml/2.2"><Document><Placemark><LineString><coordinates>';
+                trailCoords.forEach(c => kml += `${c.lng.toFixed(6)},${c.lat.toFixed(6)},0 `);
+                kml += '</coordinates></LineString></Placemark></Document></kml>';
+                downloadFile(kml, 'trail.kml', 'application/vnd.google-earth.kml+xml');
+            });
+
+            locateBtn.addEventListener('click', () => {
+                if (!isTracking) {
+                    if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
+                        showAlert("GPS requires HTTPS. Android browsers block location on local file:// paths.");
+                        return;
+                    }
+                    map.locate({setView: true, maxZoom: 16, watch: true, enableHighAccuracy: true});
+                    locateBtn.classList.replace('text-gray-700', 'text-blue-600');
+                    locateBtn.classList.add('bg-blue-50');
+                    locateIcon.classList.add('fa-fade');
+                    isTracking = true;
+                } else {
+                    map.stopLocate();
+                    if (userMarker) map.removeLayer(userMarker);
+                    if (userAccuracyCircle) map.removeLayer(userAccuracyCircle);
+                    userMarker = null; userAccuracyCircle = null;
+                    locateBtn.classList.replace('text-blue-600', 'text-gray-700');
+                    locateBtn.classList.remove('bg-blue-50');
+                    locateIcon.classList.remove('fa-fade');
+                    isTracking = false;
+                }
+            });
+
+            map.on('locationfound', function(e) {
+                const hStyle = (e.heading !== null && !isNaN(e.heading)) ? `transform: translateX(-50%) rotate(${e.heading}deg);` : 'display:none;';
+                const iconHtml = `<div class="user-location-pulse"></div><div class="user-location-heading" style="${hStyle}"></div><div class="user-location-dot"></div>`;
+                const icon = L.divIcon({ className: 'user-location-marker', html: iconHtml, iconSize: [30, 30], iconAnchor: [15, 15] });
+
+                if (!userMarker) {
+                    userMarker = L.marker(e.latlng, {icon, interactive: false, zIndexOffset: 1000}).addTo(map);
+                    userAccuracyCircle = L.circle(e.latlng, {radius: e.accuracy/2, color: '#4285F4', fillOpacity: 0.15, interactive: false}).addTo(map);
+                } else {
+                    userMarker.setLatLng(e.latlng); userMarker.setIcon(icon);
+                    userAccuracyCircle.setLatLng(e.latlng); userAccuracyCircle.setRadius(e.accuracy/2);
+                }
+            });
+
+            map.on('locationerror', function(e) {
+                showAlert("Could not access location. Ensure you are on HTTPS and permissions are granted.");
+                if (isTracking) locateBtn.click();
+            });
+        };
+    </script>
+</body>
+</html>
