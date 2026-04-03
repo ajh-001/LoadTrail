@@ -2,7 +2,7 @@
   "name": "Trail Tracer",
   "short_name": "Trail Tracer",
   "description": "Draw and track your favorite trails on topographic maps.",
-  "start_url": "/index.html",
+  "start_url": "/",
   "display": "standalone",
   "background_color": "#789dcc",
   "theme_color": "#828282",
