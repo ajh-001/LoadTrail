@@ -5,13 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Trail Tracer & Map Overlay</title>
 
-        <link rel="manifest" href="manifest.json">
+        <link rel="manifest" href="/manifest.json">
 
-    <script>
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('sw.js');
-      }
-    </script>
+
     
     <!-- Tailwind CSS for UI styling -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -547,5 +543,20 @@
             });
         };
     </script>
+
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js')
+        .then(registration => {
+          console.log('SW registered with scope:', registration.scope);
+        })
+        .catch(err => {
+          console.error('SW registration failed:', err);
+        });
+    });
+  }
+</script>
+    
 </body>
 </html>
