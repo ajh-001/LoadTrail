@@ -2,13 +2,18 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Trail Tracer & Map Overlay</title>
-
-        <link rel="manifest" href="./manifest.json">
-
-
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     
+    <!-- PWA Meta Tags -->
+    <title>Trail Tracer</title>
+    <meta name="theme-color" content="#2563eb">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Trail Tracer">
+    
+    <!-- Embedded PWA Manifest (Base64 Encoded JSON) -->
+    <link rel="manifest" href="data:application/manifest+json;base64,eyJuYW1lIjoiVHJhaWwgVHJhY2VyIiwic2hvcnRfbmFtZSI6IlRyYWNlciIsInN0YXJ0X3VybCI6Ii4iLCJkaXNwbGF5Ijoic3RhbmRhbG9uZSIsImJhY2tncm91bmRfY29sb3ciOiIjZmZmZmZmIiwidGhlbWVfY29sb3ciOiIjMjU2M2ViIiwiaWNvbnMiOlt7InNyYyI6ImRhdGE6aW1hZ2Uvc3ZnK3htbDtjaGFyc2V0PXV0Zi04LCUzQ3N2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCA1MTIgNTEyJyUzRSUzQ3JlY3Qgd2lkdGg9JzUxMicgaGVpZ2h0PSc1MTInIHJ4PScxMDAnIGZpbGw9JyMyNTYzZWInLyUzRSUzQ3BhdGggZD0nTTE4MCAyNTYgTCAzMzIgMjU2JyBzdHJva2U9J3doaXRlJyBzdHJva2Utd2lkdGg9JzQwJyBzdHJva2UtbGluZWNhcD0ncm91bmQnLyUzRSUzQ2NpcmNsZSBjeD0nMTgwJyBjeT0nMjU2JyByPSc0MCcgZmlsbD0nI2VmNDQ0NCcvJTNFJTNDY2lyY2xlIGN4PSczMzInIGN5PScyNTYnIHI9JzQwJyBmaWxsPScjZWZ0NDQ0Jy8lM0UlM0Mvc3ZnJTNFIiwic2l6ZXMiOiI1MTJ4NTEyIiwidHlwZSI6ImltYWdlL3N2Zyt4bWwiLCJwdXJwb3NlIjoiYW55IG1hc2thYmxlIn1dfQ==">
+
     <!-- Tailwind CSS for UI styling -->
     <script src="https://cdn.tailwindcss.com"></script>
     
@@ -25,43 +30,21 @@
         .drawing-cursor .leaflet-interactive { cursor: crosshair !important; }
         
         /* Custom User Location Live Marker */
-        .user-location-marker {
-            position: relative;
-        }
+        .user-location-marker { position: relative; }
         .user-location-pulse {
             background-color: rgba(66, 133, 244, 0.4);
-            width: 30px;
-            height: 30px;
-            border-radius: 50%;
-            position: absolute;
-            top: 0;
-            left: 0;
-            animation: pulse 2s infinite;
-            z-index: 1;
+            width: 30px; height: 30px; border-radius: 50%; position: absolute;
+            top: 0; left: 0; animation: pulse 2s infinite; z-index: 1;
         }
         .user-location-dot {
             background-color: #4285F4;
-            width: 14px;
-            height: 14px;
-            border-radius: 50%;
-            border: 2px solid white;
-            box-shadow: 0 0 4px rgba(0,0,0,0.4);
-            position: absolute;
-            top: 8px;
-            left: 8px;
-            z-index: 3;
+            width: 14px; height: 14px; border-radius: 50%; border: 2px solid white;
+            box-shadow: 0 0 4px rgba(0,0,0,0.4); position: absolute;
+            top: 8px; left: 8px; z-index: 3;
         }
         .user-location-heading {
-            width: 0;
-            height: 0;
-            border-left: 7px solid transparent;
-            border-right: 7px solid transparent;
-            border-bottom: 14px solid rgba(66, 133, 244, 0.9);
-            position: absolute;
-            top: -2px;
-            left: 50%;
-            transform-origin: 50% 17px;
-            z-index: 2;
+            width: 0; height: 0; border-left: 7px solid transparent; border-right: 7px solid transparent; border-bottom: 14px solid rgba(66, 133, 244, 0.9);
+            position: absolute; top: -2px; left: 50%; transform-origin: 50% 17px; z-index: 2;
         }
         @keyframes pulse {
             0% { transform: scale(0.5); opacity: 1; }
@@ -69,42 +52,25 @@
         }
 
         /* Sidebar Toggle Transitions */
-        #sidebar {
-            transition: height 0.3s ease, width 0.3s ease;
-        }
-        .sidebar-content {
-            transition: opacity 0.2s ease, visibility 0.2s ease;
-        }
+        #sidebar { transition: height 0.3s ease, width 0.3s ease; }
+        .sidebar-content { transition: opacity 0.2s ease, visibility 0.2s ease; }
         @media (max-width: 767px) {
             #sidebar { width: 100%; }
             #sidebar.collapsed { height: 0 !important; }
-            #sidebar.collapsed .sidebar-content {
-                opacity: 0; visibility: hidden; height: 0; padding-top: 0; padding-bottom: 0; overflow: hidden;
-            }
+            #sidebar.collapsed .sidebar-content { opacity: 0; visibility: hidden; height: 0; padding-top: 0; padding-bottom: 0; overflow: hidden; }
             #sidebarIcon { transform: rotate(0deg); }
             #sidebar.collapsed #sidebarIcon { transform: rotate(180deg); }
         }
         @media (min-width: 768px) {
             #sidebar { height: 100%; width: 20rem; }
             #sidebar.collapsed { width: 0 !important; }
-            #sidebar.collapsed .sidebar-content {
-                opacity: 0; visibility: hidden; width: 0; padding-left: 0; padding-right: 0; overflow: hidden;
-            }
+            #sidebar.collapsed .sidebar-content { opacity: 0; visibility: hidden; width: 0; padding-left: 0; padding-right: 0; overflow: hidden; }
             #sidebarIcon { transform: rotate(-90deg); }
             #sidebar.collapsed #sidebarIcon { transform: rotate(90deg); }
         }
 
         /* Custom Alert Modal Styles */
-        #customAlert {
-            display: none;
-            position: fixed;
-            top: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            z-index: 9999;
-            width: 90%;
-            max-width: 400px;
-        }
+        #customAlert { display: none; position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 9999; width: 90%; max-width: 400px; }
     </style>
 </head>
 <body class="flex flex-col md:flex-row h-[100dvh] bg-gray-50 overflow-hidden">
@@ -124,8 +90,16 @@
     <!-- Control Panel -->
     <div id="sidebar" class="relative bg-white shadow-xl z-[2000] flex-shrink-0">
         <div id="sidebarContent" class="sidebar-content w-full md:w-80 max-h-[50vh] md:max-h-full flex flex-col p-5 overflow-y-auto">
-            <h1 class="text-2xl font-bold text-gray-800 mb-2"><i class="fa-solid fa-map-location-dot text-blue-600 mr-2"></i>Trail Tracer</h1>
-            <p class="text-sm text-gray-500 mb-6">Overlay a map, trace a route, and export.</p>
+            
+            <div class="flex justify-between items-center mb-2">
+                <h1 class="text-2xl font-bold text-gray-800"><i class="fa-solid fa-map-location-dot text-blue-600 mr-2"></i>Trail Tracer</h1>
+            </div>
+            <p class="text-sm text-gray-500 mb-4">Overlay a map, trace a route, and export.</p>
+
+            <!-- PWA Install Button (Hidden by default, shown when app is installable) -->
+            <button id="installAppBtn" class="hidden w-full mb-6 flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold py-2.5 rounded-lg transition shadow-md">
+                <i class="fa-solid fa-mobile-screen-button"></i> Install App to Home Screen
+            </button>
 
             <!-- Step 1: Overlay -->
             <div class="mb-6">
@@ -226,6 +200,32 @@
     </div>
 
     <script>
+        // --- PWA INSTALLATION LOGIC ---
+        let deferredPrompt;
+        const installAppBtn = document.getElementById('installAppBtn');
+
+        window.addEventListener('beforeinstallprompt', (e) => {
+            // Prevent Chrome 67 and earlier from automatically showing the prompt
+            e.preventDefault();
+            // Stash the event so it can be triggered later.
+            deferredPrompt = e;
+            // Update UI to notify the user they can add to home screen
+            installAppBtn.classList.remove('hidden');
+        });
+
+        installAppBtn.addEventListener('click', async () => {
+            if (deferredPrompt) {
+                // Show the install prompt
+                deferredPrompt.prompt();
+                // Wait for the user to respond to the prompt
+                const { outcome } = await deferredPrompt.userChoice;
+                if (outcome === 'accepted') {
+                    installAppBtn.classList.add('hidden');
+                }
+                deferredPrompt = null;
+            }
+        });
+
         // --- HELPERS ---
         function showAlert(msg) {
             document.getElementById('alertMessage').innerText = msg;
@@ -506,7 +506,7 @@
                         showAlert("GPS requires HTTPS. Android browsers block location on local file:// paths.");
                         return;
                     }
-                    map.locate({setView: true, maxZoom: 16, watch: true, enableHighAccuracy: true});
+                    map.locate({setView: false, watch: true, enableHighAccuracy: true});
                     locateBtn.classList.replace('text-gray-700', 'text-blue-600');
                     locateBtn.classList.add('bg-blue-50');
                     locateIcon.classList.add('fa-fade');
@@ -529,6 +529,7 @@
                 const icon = L.divIcon({ className: 'user-location-marker', html: iconHtml, iconSize: [30, 30], iconAnchor: [15, 15] });
 
                 if (!userMarker) {
+                    map.flyTo(e.latlng, Math.max(map.getZoom(), 16));
                     userMarker = L.marker(e.latlng, {icon, interactive: false, zIndexOffset: 1000}).addTo(map);
                     userAccuracyCircle = L.circle(e.latlng, {radius: e.accuracy/2, color: '#4285F4', fillOpacity: 0.15, interactive: false}).addTo(map);
                 } else {
@@ -543,20 +544,5 @@
             });
         };
     </script>
-
-<script>
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js', { scope: '/LoadTrail/' })
-        .then(registration => {
-          console.log('SW registered with scope:', registration.scope);
-        })
-        .catch(err => {
-          console.error('SW registration failed:', err);
-        });
-    });
-  }
-</script>
-    
 </body>
 </html>
