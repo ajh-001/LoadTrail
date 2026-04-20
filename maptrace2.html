@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    
+    <!-- PWA Meta Tags -->
+    <title>Trail Tracer</title>
+    <meta name="theme-color" content="#2563eb">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Trail Tracer">
+    
+    <!-- Embedded PWA Manifest (Base64 Encoded JSON) -->
+    <link rel="manifest" href="data:application/manifest+json;base64,eyJuYW1lIjoiVHJhaWwgVHJhY2VyIiwic2hvcnRfbmFtZSI6IlRyYWNlciIsInN0YXJ0X3VybCI6Ii4iLCJkaXNwbGF5Ijoic3RhbmRhbG9uZSIsImJhY2tncm91bmRfY29sb3ciOiIjZmZmZmZmIiwidGhlbWVfY29sb3ciOiIjMjU2M2ViIiwiaWNvbnMiOlt7InNyYyI6ImRhdGE6aW1hZ2Uvc3ZnK3htbDtjaGFyc2V0PXV0Zi04LCUzQ3N2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCA1MTIgNTEyJyUzRSUzQ3JlY3Qgd2lkdGg9JzUxMicgaGVpZ2h0PSc1MTInIHJ4PScxMDAnIGZpbGw9JyMyNTYzZWInLyUzRSUzQ3BhdGggZD0nTTE4MCAyNTYgTCAzMzIgMjU2JyBzdHJva2U9J3doaXRlJyBzdHJva2Utd2lkdGg9JzQwJyBzdHJva2UtbGluZWNhcD0ncm91bmQnLyUzRSUzQ2NpcmNsZSBjeD0nMTgwJyBjeT0nMjU2JyByPSc0MCcgZmlsbD0nI2VmNDQ0NCcvJTNFJTNDY2lyY2xlIGN4PSczMzInIGN5PScyNTYnIHI9JzQwJyBmaWxsPScjZWZ0NDQ0Jy8lM0UlM0Mvc3ZnJTNFIiwic2l6ZXMiOiI1MTJ4NTEyIiwidHlwZSI6ImltYWdlL3N2Zyt4bWwiLCJwdXJwb3NlIjoiYW55IG1hc2thYmxlIn1dfQ==">
+
+    <!-- Tailwind CSS for UI styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Leaflet CSS & JS for Mapping -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <style>
+        body, html { margin: 0; padding: 0; height: 100%; width: 100%; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        #map { height: 100%; width: 100%; z-index: 1; }
+        .drawing-cursor .leaflet-interactive { cursor: crosshair !important; }
+        
+        /* SVG Icon Utility */
+        .svg-icon { display: inline-block; width: 1.25em; height: 1.25em; vertical-align: middle; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+        
+        /* Custom User Location Live Marker */
+        .user-location-marker { position: relative; }
+        .user-location-pulse {
+            background-color: rgba(66, 133, 244, 0.4);
+            width: 30px; height: 30px; border-radius: 50%; position: absolute;
+            top: 0; left: 0; animation: pulse 2s infinite; z-index: 1;
+        }
+        .user-location-dot {
+            background-color: #4285F4;
+            width: 14px; height: 14px; border-radius: 50%; border: 2px solid white;
+            box-shadow: 0 0 4px rgba(0,0,0,0.4); position: absolute;
+            top: 8px; left: 8px; z-index: 3;
+        }
+        .user-location-heading {
+            width: 0; height: 0; border-left: 7px solid transparent; border-right: 7px solid transparent; border-bottom: 14px solid rgba(66, 133, 244, 0.9);
+            position: absolute; top: -2px; left: 50%; transform-origin: 50% 17px; z-index: 2;
+        }
+        @keyframes pulse {
+            0% { transform: scale(0.5); opacity: 1; }
+            100% { transform: scale(2.5); opacity: 0; }
+        }
+
+        /* Sidebar Toggle Transitions */
+        #sidebar { transition: height 0.3s ease, width 0.3s ease; }
+        .sidebar-content { transition: opacity 0.2s ease, visibility 0.2s ease; }
+        @media (max-width: 767px) {
+            #sidebar { width: 100%; }
+            #sidebar.collapsed { height: 0 !important; }
+            #sidebar.collapsed .sidebar-content { opacity: 0; visibility: hidden; height: 0; padding-top: 0; padding-bottom: 0; overflow: hidden; }
+            #sidebarIcon { transform: rotate(0deg); }
+            #sidebar.collapsed #sidebarIcon { transform: rotate(180deg); }
+        }
+        @media (min-width: 768px) {
+            #sidebar { height: 100%; width: 20rem; }
+            #sidebar.collapsed { width: 0 !important; }
+            #sidebar.collapsed .sidebar-content { opacity: 0; visibility: hidden; width: 0; padding-left: 0; padding-right: 0; overflow: hidden; }
+            #sidebarIcon { transform: rotate(-90deg); }
+            #sidebar.collapsed #sidebarIcon { transform: rotate(90deg); }
+        }
+
+        #customAlert { display: none; position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 9999; width: 90%; max-width: 400px; }
+    </style>
+</head>
+<body class="flex flex-col md:flex-row h-[100dvh] bg-gray-50 overflow-hidden">
+
+    <!-- Inline SVG Sprite Map for Zero External Requests -->
+    <svg style="display: none;">
+        <symbol id="icon-alert" viewBox="0 0 24 24"><path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></symbol>
+        <symbol id="icon-close" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></symbol>
+        <symbol id="icon-map" viewBox="0 0 24 24"><path d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/></symbol>
+        <symbol id="icon-mobile" viewBox="0 0 24 24"><path d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 18.75h3"/></symbol>
+        <symbol id="icon-camera" viewBox="0 0 24 24"><path d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z"/><circle cx="12" cy="13" r="4"/></symbol>
+        <symbol id="icon-up" viewBox="0 0 24 24"><path d="M8.25 6.75L12 3m0 0l3.75 3.75M12 3v18"/></symbol>
+        <symbol id="icon-down" viewBox="0 0 24 24"><path d="M15.75 17.25L12 21m0 0l-3.75-3.75M12 21V3"/></symbol>
+        <symbol id="icon-left" viewBox="0 0 24 24"><path d="M6.75 15.75L3 12m0 0l3.75-3.75M3 12h18"/></symbol>
+        <symbol id="icon-right" viewBox="0 0 24 24"><path d="M17.25 8.25L21 12m0 0l-3.75 3.75M21 12H3"/></symbol>
+        <symbol id="icon-plus" viewBox="0 0 24 24"><path d="M12 4.5v15m7.5-7.5h-15"/></symbol>
+        <symbol id="icon-minus" viewBox="0 0 24 24"><path d="M19.5 12h-15"/></symbol>
+        <symbol id="icon-rotate-left" viewBox="0 0 24 24"><path d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3"/></symbol>
+        <symbol id="icon-rotate-right" viewBox="0 0 24 24"><path d="M15 15l6-6m0 0l-6-6m6 6H9a6 6 0 000 12h3"/></symbol>
+        <symbol id="icon-pen" viewBox="0 0 24 24"><path d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125"/></symbol>
+        <symbol id="icon-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></symbol>
+        <symbol id="icon-trash" viewBox="0 0 24 24"><path d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/></symbol>
+        <symbol id="icon-locate" viewBox="0 0 24 24"><path d="M12 22v-4m0-12V2m10 10h-4M6 12H2m17.657-5.657l-2.829 2.829M7.172 16.828l-2.829 2.829m13.314 0l-2.829-2.829M7.172 7.172L4.343 4.343" /><circle cx="12" cy="12" r="5"/></symbol>
+        <symbol id="icon-chevron" viewBox="0 0 24 24"><path d="M4.5 15.75l7.5-7.5 7.5 7.5"/></symbol>
+    </svg>
+
+    <!-- Custom Alert Notification -->
+    <div id="customAlert" class="bg-white border-l-4 border-red-500 shadow-2xl rounded-lg p-4 flex items-start gap-3">
+        <svg class="svg-icon text-red-500 mt-0.5"><use href="#icon-alert"></use></svg>
+        <div class="flex-grow">
+            <h4 class="font-bold text-gray-800">Alert</h4>
+            <p id="alertMessage" class="text-sm text-gray-600"></p>
+        </div>
+        <button onclick="document.getElementById('customAlert').style.display='none'" class="text-gray-400 hover:text-gray-600">
+            <svg class="svg-icon"><use href="#icon-close"></use></svg>
+        </button>
+    </div>
+
+    <!-- Control Panel -->
+    <div id="sidebar" class="relative bg-white shadow-xl z-[2000] flex-shrink-0">
+        <div id="sidebarContent" class="sidebar-content w-full md:w-80 max-h-[33vh] md:max-h-full flex flex-col p-5 overflow-y-auto">
+            
+            <div class="flex justify-between items-center mb-2">
+                <h1 class="text-2xl font-bold text-gray-800 flex items-center gap-2">
+                    <svg class="svg-icon text-blue-600"><use href="#icon-map"></use></svg> Trail Tracer
+                </h1>
+            </div>
+            <p class="text-sm text-gray-500 mb-4">Overlay a map, trace a route, and export.</p>
+
+            <button id="installAppBtn" class="hidden w-full mb-6 flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold py-2.5 rounded-lg transition shadow-md">
+                <svg class="svg-icon"><use href="#icon-mobile"></use></svg> Install App
+            </button>
+
+            <!-- Step 1: Overlay -->
+            <div class="mb-6">
+                <h2 class="text-sm font-bold uppercase tracking-wider text-gray-400 mb-3">1. Map Overlay</h2>
+                
+                <label class="flex flex-col items-center justify-center w-full border-2 border-dashed border-gray-300 rounded-lg p-4 cursor-pointer hover:bg-gray-50 transition">
+                    <svg class="svg-icon text-gray-400 w-8 h-8 mb-2"><use href="#icon-camera"></use></svg>
+                    <span class="block text-sm font-medium text-gray-600">Upload Map Photo</span>
+                    <input type="file" id="imageUpload" class="hidden" accept="image/*">
+                </label>
+
+                <div id="overlayControls" class="hidden mt-4 bg-gray-50 p-3 rounded-lg border border-gray-200">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Opacity: <span id="opacityVal">60%</span></label>
+                    <input type="range" id="opacitySlider" min="0" max="100" value="60" class="w-full mb-4">
+                    
+                    <h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 text-center">Adjust Position</h3>
+                    <div class="grid grid-cols-3 gap-1 mb-2 max-w-[180px] mx-auto">
+                        <div></div>
+                        <button id="btnUp" class="bg-white border border-gray-300 p-2 rounded hover:bg-gray-100 text-gray-700 transition touch-manipulation flex items-center justify-center"><svg class="svg-icon"><use href="#icon-up"></use></svg></button>
+                        <div></div>
+                        <button id="btnLeft" class="bg-white border border-gray-300 p-2 rounded hover:bg-gray-100 text-gray-700 transition touch-manipulation flex items-center justify-center"><svg class="svg-icon"><use href="#icon-left"></use></svg></button>
+                        <button id="btnDown" class="bg-white border border-gray-300 p-2 rounded hover:bg-gray-100 text-gray-700 transition touch-manipulation flex items-center justify-center"><svg class="svg-icon"><use href="#icon-down"></use></svg></button>
+                        <button id="btnRight" class="bg-white border border-gray-300 p-2 rounded hover:bg-gray-100 text-gray-700 transition touch-manipulation flex items-center justify-center"><svg class="svg-icon"><use href="#icon-right"></use></svg></button>
+                    </div>
+
+                    <div class="flex gap-2 mb-2">
+                        <button id="btnScaleDown" class="flex-1 bg-white border border-gray-300 p-2 rounded hover:bg-gray-100 text-gray-700 transition touch-manipulation flex items-center justify-center"><svg class="svg-icon"><use href="#icon-minus"></use></svg></button>
+                        <button id="btnScaleUp" class="flex-1 bg-white border border-gray-300 p-2 rounded hover:bg-gray-100 text-gray-700 transition touch-manipulation flex items-center justify-center"><svg class="svg-icon"><use href="#icon-plus"></use></svg></button>
+                    </div>
+
+                    <div class="flex gap-2 mb-4">
+                        <button id="btnRotLeft" class="flex-1 bg-white border border-gray-300 p-2 rounded hover:bg-gray-100 text-gray-700 transition touch-manipulation flex items-center justify-center"><svg class="svg-icon"><use href="#icon-rotate-left"></use></svg></button>
+                        <button id="btnRotRight" class="flex-1 bg-white border border-gray-300 p-2 rounded hover:bg-gray-100 text-gray-700 transition touch-manipulation flex items-center justify-center"><svg class="svg-icon"><use href="#icon-rotate-right"></use></svg></button>
+                    </div>
+
+                    <button id="removeOverlayBtn" class="w-full text-red-600 border border-red-200 bg-white hover:bg-red-50 text-sm py-1.5 rounded transition">
+                        Remove Image
+                    </button>
+                </div>
+            </div>
+
+            <!-- Step 2: Draw -->
+            <div class="mb-6 border-t border-gray-200 pt-6">
+                <h2 class="text-sm font-bold uppercase tracking-wider text-gray-400 mb-3">2. Trace Trail</h2>
+                
+                <button id="drawToggleBtn" class="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-lg transition shadow-sm mb-3">
+                    <svg class="svg-icon" id="drawIcon"><use href="#icon-pen"></use></svg> <span id="drawText">Start Drawing</span>
+                </button>
+
+                <div class="flex gap-2">
+                    <button id="undoBtn" class="flex-1 flex items-center justify-center gap-1 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 text-sm py-2 rounded transition disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                        <svg class="svg-icon w-4 h-4"><use href="#icon-rotate-left"></use></svg> Undo
+                    </button>
+                    <button id="clearTrailBtn" class="flex-1 flex items-center justify-center gap-1 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 text-sm py-2 rounded transition disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                        <svg class="svg-icon w-4 h-4"><use href="#icon-trash"></use></svg> Clear All
+                    </button>
+                </div>
+                
+                <p class="text-xs text-gray-500 mt-3 text-center" id="pointCount">0 points drawn</p>
+            </div>
+
+            <!-- Step 3: Export -->
+            <div class="mt-auto border-t border-gray-200 pt-6">
+                <h2 class="text-sm font-bold uppercase tracking-wider text-gray-400 mb-3">3. Export Route</h2>
+                
+                <div class="flex gap-2">
+                    <button id="exportGpxBtn" class="flex-1 bg-green-600 hover:bg-green-700 text-white font-medium py-2.5 rounded-lg transition shadow-sm disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                        Download .GPX
+                    </button>
+                    <button id="exportKmlBtn" class="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-2.5 rounded-lg transition shadow-sm disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                        Download .KML
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Toggle Handle -->
+        <button id="sidebarHandle" class="absolute left-1/2 md:left-auto -bottom-6 md:bottom-auto -translate-x-1/2 md:translate-x-0 md:top-1/2 md:-right-6 md:-translate-y-1/2 w-12 h-6 md:w-6 md:h-12 bg-white border border-gray-200 shadow-md flex items-center justify-center z-[2001] rounded-b-md md:rounded-b-none md:rounded-r-md text-gray-500 hover:text-blue-600 transition-colors focus:outline-none">
+            <svg id="sidebarIcon" class="svg-icon transition-transform duration-300"><use href="#icon-chevron"></use></svg>
+        </button>
+    </div>
+
+    <!-- Map Container -->
+    <div id="map" class="flex-grow relative z-10">
+        <!-- Live Location Floating Button -->
+        <button id="locateBtn" class="absolute top-[90px] right-2.5 z-[1000] bg-white w-[34px] h-[34px] rounded-md shadow-[0_1px_5px_rgba(0,0,0,0.4)] border border-[#ccc] flex items-center justify-center text-gray-700 hover:bg-[#f4f4f4] transition touch-manipulation" title="Track My Location">
+            <svg class="svg-icon w-5 h-5"><use href="#icon-locate"></use></svg>
+        </button>
+
+        <div id="mapInstructionOverlay" class="hidden absolute top-4 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white px-6 py-3 rounded-full shadow-lg z-[1000] font-bold pointer-events-none text-center w-11/12 max-w-md">
+            <span id="mapInstructionText">Click map to place image center.</span>
+        </div>
+
+        <!-- Crosshair visual center -->
+        <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none opacity-50 z-[1000]">
+            <svg class="svg-icon text-gray-600 w-6 h-6"><use href="#icon-plus"></use></svg>
+        </div>
+    </div>
+
+    <script>
+        // --- 1. PWA INSTALLATION & INLINE SERVICE WORKER ---
+        const swCode = `
+            self.addEventListener('install', e => self.skipWaiting());
+            self.addEventListener('activate', e => self.clients.claim());
+            self.addEventListener('fetch', e => {
+                e.respondWith(fetch(e.request).catch(() => new Response('App Offline', { headers: { 'Content-Type': 'text/plain' } })));
+            });
+        `;
+        const swBlob = new Blob([swCode], { type: 'application/javascript' });
+        const swUrl = URL.createObjectURL(swBlob);
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register(swUrl).catch(err => console.log('SW Registration failed:', err));
+        }
+
+        let deferredPrompt;
+        const installAppBtn = document.getElementById('installAppBtn');
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            installAppBtn.classList.remove('hidden');
+        });
+
+        installAppBtn.addEventListener('click', async () => {
+            if (deferredPrompt) {
+                deferredPrompt.prompt();
+                const { outcome } = await deferredPrompt.userChoice;
+                if (outcome === 'accepted') installAppBtn.classList.add('hidden');
+                deferredPrompt = null;
+            }
+        });
+
+        // --- 2. CUSTOM LEAFLET OVERLAY (Replaces MutationObserver) ---
+        L.RotatedImageOverlay = L.ImageOverlay.extend({
+            options: { angle: 0 },
+            setAngle: function(angle) {
+                this.options.angle = angle;
+                this._applyRotation();
+            },
+            _reset: function() {
+                L.ImageOverlay.prototype._reset.call(this);
+                this._applyRotation();
+            },
+            _applyRotation: function() {
+                if (!this._image) return;
+                let t = this._image.style.transform;
+                t = t.replace(/\s*rotate\([^)]+\)/g, ''); // Strip existing
+                this._image.style.transform = t + ' rotate(' + (this.options.angle || 0) + 'deg)';
+                this._image.style.transformOrigin = 'center center';
+            }
+        });
+
+        function showAlert(msg) {
+            document.getElementById('alertMessage').innerText = msg;
+            document.getElementById('customAlert').style.display = 'flex';
+            setTimeout(() => document.getElementById('customAlert').style.display = 'none', 6000);
+        }
+
+        // --- 3. APP INITIALIZATION ---
+        window.onload = function() {
+            // Use Canvas Renderer for high-performance trails
+            const map = L.map('map', { zoomControl: false, renderer: L.canvas() }).setView([52.2, -0.6], 5);
+            L.control.zoom({ position: 'topright' }).addTo(map);
+
+            const esriSatellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: '&copy; Esri' });
+            const openStreetMap = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OSM' });
+            const topoMap = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', { attribution: 'SRTM | OpenTopoMap' });
+
+            esriSatellite.addTo(map);
+            L.control.layers({ "Satellite": esriSatellite, "Topo Map": topoMap, "Street Map": openStreetMap }, null, {position: 'bottomleft'}).addTo(map);
+
+            // State
+            let imageOverlay = null;
+            let isPlacingImage = false;
+            let imgCenter = null;
+            let imgWidthLng = 0;
+            let imgHeightLat = 0;
+            let imgRotation = 0;
+            let calImgObj = new Image();
+
+            let isDrawing = false;
+            let trailCoords = [];
+            let trailPolyline = L.polyline([], { color: '#ff0000', weight: 4, opacity: 0.8 }).addTo(map);
+            let pointMarkers = L.layerGroup().addTo(map);
+
+            let isTracking = false;
+            let userMarker = null;
+            let userAccuracyCircle = null;
+
+            // DOM Cache
+            const ui = {
+                drawToggleBtn: document.getElementById('drawToggleBtn'),
+                drawIcon: document.getElementById('drawIcon'),
+                drawText: document.getElementById('drawText'),
+                undoBtn: document.getElementById('undoBtn'),
+                clearTrailBtn: document.getElementById('clearTrailBtn'),
+                pointCountTxt: document.getElementById('pointCount'),
+                exportGpxBtn: document.getElementById('exportGpxBtn'),
+                exportKmlBtn: document.getElementById('exportKmlBtn'),
+                locateBtn: document.getElementById('locateBtn'),
+                opacitySlider: document.getElementById('opacitySlider'),
+                opacityVal: document.getElementById('opacityVal'),
+                removeOverlayBtn: document.getElementById('removeOverlayBtn'),
+                overlayControls: document.getElementById('overlayControls'),
+                mapInstructionOverlay: document.getElementById('mapInstructionOverlay'),
+                mapInstructionText: document.getElementById('mapInstructionText'),
+                mapEl: document.getElementById('map')
+            };
+
+            // --- 4. IMAGE PLACEMENT LOGIC ---
+            document.getElementById('imageUpload').addEventListener('change', function(e) {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    calImgObj.src = event.target.result;
+                    calImgObj.onload = () => {
+                        isPlacingImage = true;
+                        if (imageOverlay) map.removeLayer(imageOverlay);
+                        ui.mapInstructionText.innerHTML = "Click map to place image center.";
+                        ui.mapInstructionOverlay.classList.remove('hidden');
+                        ui.mapEl.classList.add('drawing-cursor');
+                    };
+                };
+                reader.readAsDataURL(file);
+                e.target.value = '';
+            });
+
+            function updateOverlay() {
+                if (!imageOverlay || !imgCenter) return;
+                const halfW = imgWidthLng / 2;
+                const halfH = imgHeightLat / 2;
+                const bounds = L.latLngBounds(
+                    [imgCenter.lat - halfH, imgCenter.lng - halfW],
+                    [imgCenter.lat + halfH, imgCenter.lng + halfW]
+                );
+                imageOverlay.setBounds(bounds);
+                imageOverlay.setAngle(imgRotation);
+            }
+
+            // High-performance hold listeners via requestAnimationFrame
+            function addHoldListener(btnId, action) {
+                const btn = document.getElementById(btnId);
+                let reqId = null;
+                let lastTime = 0;
+                
+                const loop = (time) => {
+                    if (time - lastTime >= 40) { // ~25fps equivalent for smooth adjustments
+                        action();
+                        lastTime = time;
+                    }
+                    reqId = requestAnimationFrame(loop);
+                };
+                const start = (e) => {
+                    if (e.type === 'touchstart' && e.cancelable) e.preventDefault();
+                    if (!reqId) { action(); lastTime = performance.now(); reqId = requestAnimationFrame(loop); }
+                };
+                const stop = (e) => {
+                    if (e && e.type === 'touchend' && e.cancelable) e.preventDefault();
+                    if (reqId) { cancelAnimationFrame(reqId); reqId = null; }
+                };
+                
+                btn.addEventListener('mousedown', start);
+                btn.addEventListener('mouseup', stop);
+                btn.addEventListener('mouseleave', stop);
+                btn.addEventListener('touchstart', start, {passive: false});
+                btn.addEventListener('touchend', stop, {passive: false});
+                btn.addEventListener('touchcancel', stop, {passive: false});
+            }
+
+            addHoldListener('btnUp', () => { imgCenter.lat += (imgHeightLat * 0.01); updateOverlay(); });
+            addHoldListener('btnDown', () => { imgCenter.lat -= (imgHeightLat * 0.01); updateOverlay(); });
+            addHoldListener('btnLeft', () => { imgCenter.lng -= (imgWidthLng * 0.01); updateOverlay(); });
+            addHoldListener('btnRight', () => { imgCenter.lng += (imgWidthLng * 0.01); updateOverlay(); });
+            addHoldListener('btnScaleUp', () => { imgWidthLng *= 1.02; imgHeightLat *= 1.02; updateOverlay(); });
+            addHoldListener('btnScaleDown', () => { imgWidthLng *= 0.98; imgHeightLat *= 0.98; updateOverlay(); });
+            addHoldListener('btnRotLeft', () => { imgRotation -= 1; updateOverlay(); });
+            addHoldListener('btnRotRight', () => { imgRotation += 1; updateOverlay(); });
+
+            ui.opacitySlider.addEventListener('input', (e) => {
+                ui.opacityVal.innerText = e.target.value + '%';
+                if (imageOverlay) imageOverlay.setOpacity(e.target.value / 100);
+            });
+
+            ui.removeOverlayBtn.addEventListener('click', () => {
+                if (imageOverlay) map.removeLayer(imageOverlay);
+                imageOverlay = null;
+                ui.overlayControls.classList.add('hidden');
+            });
+
+            // --- 5. MAP INTERACTIONS ---
+            map.on('click', function(e) {
+                if (isPlacingImage) {
+                    isPlacingImage = false;
+                    ui.mapInstructionOverlay.classList.add('hidden');
+                    ui.mapEl.classList.remove('drawing-cursor');
+                    imgCenter = e.latlng;
+                    imgRotation = 0;
+                    
+                    const aspect = calImgObj.naturalWidth / calImgObj.naturalHeight;
+                    const mapBounds = map.getBounds();
+                    imgWidthLng = (mapBounds.getEast() - mapBounds.getWest()) * 0.3; 
+                    imgHeightLat = (imgWidthLng * Math.cos(imgCenter.lat * Math.PI / 180)) / aspect;
+                    
+                    if (imageOverlay) map.removeLayer(imageOverlay);
+                    
+                    const opacity = ui.opacitySlider.value / 100;
+                    imageOverlay = new L.RotatedImageOverlay(calImgObj.src, [[0,0],[0,0]], { opacity, interactive: false, angle: 0 }).addTo(map);
+                    updateOverlay();
+                    ui.overlayControls.classList.remove('hidden');
+                    
+                } else if (isDrawing) {
+                    trailCoords.push(e.latlng);
+                    trailPolyline.addLatLng(e.latlng);
+                    L.circleMarker(e.latlng, { radius: 4, fillColor: "#fff", color: "#f00", weight: 2, interactive: false }).addTo(pointMarkers);
+                    updateDrawingUI();
+                }
+            });
+
+            ui.drawToggleBtn.addEventListener('click', () => {
+                isDrawing = !isDrawing;
+                if (isDrawing) {
+                    ui.drawText.innerText = 'Stop Drawing';
+                    ui.drawIcon.innerHTML = '<use href="#icon-stop"></use>';
+                    ui.drawToggleBtn.classList.replace('bg-blue-600', 'bg-red-600');
+                    ui.drawToggleBtn.classList.replace('hover:bg-blue-700', 'hover:bg-red-700');
+                    ui.mapEl.classList.add('drawing-cursor');
+                } else {
+                    ui.drawText.innerText = 'Start Drawing';
+                    ui.drawIcon.innerHTML = '<use href="#icon-pen"></use>';
+                    ui.drawToggleBtn.classList.replace('bg-red-600', 'bg-blue-600');
+                    ui.drawToggleBtn.classList.replace('hover:bg-red-700', 'hover:bg-blue-700');
+                    ui.mapEl.classList.remove('drawing-cursor');
+                }
+            });
+
+            ui.undoBtn.addEventListener('click', () => {
+                trailCoords.pop();
+                trailPolyline.setLatLngs(trailCoords);
+                pointMarkers.clearLayers();
+                // Because renderer is L.canvas, batch-adding markers is highly efficient
+                trailCoords.forEach(c => L.circleMarker(c, { radius: 4, fillColor: "#fff", color: "#f00", weight: 2, interactive: false }).addTo(pointMarkers));
+                updateDrawingUI();
+            });
+
+            ui.clearTrailBtn.addEventListener('click', () => {
+                if(confirm("Clear entire trail?")) {
+                    trailCoords = []; trailPolyline.setLatLngs([]); pointMarkers.clearLayers(); updateDrawingUI();
+                }
+            });
+
+            function updateDrawingUI() {
+                ui.pointCountTxt.innerText = `${trailCoords.length} points drawn`;
+                const hasPoints = trailCoords.length > 0;
+                ui.undoBtn.disabled = !hasPoints; ui.clearTrailBtn.disabled = !hasPoints;
+                ui.exportGpxBtn.disabled = !hasPoints; ui.exportKmlBtn.disabled = !hasPoints;
+            }
+
+            // --- 6. EXPORTS ---
+            function downloadFile(content, filename, contentType) {
+                const blob = new Blob([content], { type: contentType });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a'); a.href = url; a.download = filename;
+                document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+            }
+
+            ui.exportGpxBtn.addEventListener('click', () => {
+                let gpx = '<?xml version="1.0" encoding="UTF-8"?><gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1"><trk><trkseg>';
+                trailCoords.forEach(c => gpx += `<trkpt lat="${c.lat.toFixed(6)}" lon="${c.lng.toFixed(6)}"></trkpt>`);
+                gpx += '</trkseg></trk></gpx>';
+                downloadFile(gpx, 'trail.gpx', 'application/gpx+xml');
+            });
+
+            ui.exportKmlBtn.addEventListener('click', () => {
+                let kml = '<?xml version="1.0" encoding="UTF-8"?><kml xmlns="http://www.opengis.net/kml/2.2"><Document><Placemark><LineString><coordinates>';
+                trailCoords.forEach(c => kml += `${c.lng.toFixed(6)},${c.lat.toFixed(6)},0 `);
+                kml += '</coordinates></LineString></Placemark></Document></kml>';
+                downloadFile(kml, 'trail.kml', 'application/vnd.google-earth.kml+xml');
+            });
+
+            // --- 7. LOCATION TRACKING (Zero Garbage Collection) ---
+            ui.locateBtn.addEventListener('click', () => {
+                if (!isTracking) {
+                    if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
+                        showAlert("GPS requires HTTPS. Android browsers block location on local file:// paths.");
+                        return;
+                    }
+                    map.locate({setView: false, watch: true, enableHighAccuracy: true});
+                    ui.locateBtn.classList.replace('text-gray-700', 'text-blue-600');
+                    ui.locateBtn.classList.add('bg-blue-50');
+                    isTracking = true;
+                } else {
+                    map.stopLocate();
+                    if (userMarker) map.removeLayer(userMarker);
+                    if (userAccuracyCircle) map.removeLayer(userAccuracyCircle);
+                    userMarker = null; userAccuracyCircle = null;
+                    ui.locateBtn.classList.replace('text-blue-600', 'text-gray-700');
+                    ui.locateBtn.classList.remove('bg-blue-50');
+                    isTracking = false;
+                }
+            });
+
+            map.on('locationfound', function(e) {
+                if (!userMarker) {
+                    // Create once
+                    const iconHtml = `<div class="user-location-pulse"></div><div id="userHeading" class="user-location-heading" style="display:none;"></div><div class="user-location-dot"></div>`;
+                    const icon = L.divIcon({ className: 'user-location-marker', html: iconHtml, iconSize: [30, 30], iconAnchor: [15, 15] });
+                    map.flyTo(e.latlng, Math.max(map.getZoom(), 16));
+                    userMarker = L.marker(e.latlng, {icon, interactive: false, zIndexOffset: 1000}).addTo(map);
+                    userAccuracyCircle = L.circle(e.latlng, {radius: e.accuracy/2, color: '#4285F4', fillOpacity: 0.15, interactive: false}).addTo(map);
+                } else {
+                    // Update exact properties directly to avoid Garbage Collection
+                    userMarker.setLatLng(e.latlng);
+                    userAccuracyCircle.setLatLng(e.latlng);
+                    userAccuracyCircle.setRadius(e.accuracy/2);
+                    
+                    const headingEl = document.getElementById('userHeading');
+                    if (headingEl) {
+                        if (e.heading !== null && !isNaN(e.heading)) {
+                            headingEl.style.display = 'block';
+                            headingEl.style.transform = `translateX(-50%) rotate(${e.heading}deg)`;
+                        } else {
+                            headingEl.style.display = 'none';
+                        }
+                    }
+                }
+            });
+
+            map.on('locationerror', function(e) {
+                showAlert("Could not access location. Ensure you are on HTTPS and permissions are granted.");
+                if (isTracking) ui.locateBtn.click();
+            });
+
+            // Sidebar UI Logic
+            document.getElementById('sidebarHandle').addEventListener('click', () => {
+                const sidebar = document.getElementById('sidebar');
+                sidebar.classList.toggle('collapsed');
+                setTimeout(() => { map.invalidateSize(); }, 350);
+            });
+        };
+    </script>
+</body>
+</html>
